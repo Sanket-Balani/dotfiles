@@ -7,7 +7,7 @@ ok() { printf "[ok] %s\n" "$1"; }
 warn() { printf "[warn] %s\n" "$1"; }
 fail() { printf "[fail] %s\n" "$1"; }
 
-TOOLS=(brew stow zsh zoxide starship fzf fd rg bat eza yazi jq gh lazygit tmux nvim aerospace)
+TOOLS=(brew stow git delta zsh zoxide starship fzf fd rg bat eza yazi jq gh lazygit tmux nvim atuin)
 
 for t in "${TOOLS[@]}"; do
   if command -v "$t" >/dev/null 2>&1; then
@@ -48,12 +48,13 @@ check_link "$HOME/.zshrc"
 check_link "$HOME/.zprofile"
 check_link "$HOME/.zshenv"
 check_link "$HOME/.config/starship.toml"
-check_link "$HOME/.config/ghostty/config"
+check_link "$HOME/.gitconfig"
+check_link "$HOME/.config/git/ignore"
+check_link "$HOME/.config/atuin/config.toml"
 check_link "$HOME/.tmux.conf"
 check_link "$HOME/.config/tmux/tmux.conf"
 check_link "$HOME/.config/nvim/init.lua"
 check_link "$HOME/.config/yazi/yazi.toml"
-check_link "$HOME/.aerospace.toml"
 
 if [[ -d "$HOME/.tmux/plugins/tpm" ]]; then
   ok "tpm installed"
@@ -85,8 +86,22 @@ if [[ "$missing_hist" -eq 0 ]]; then
   ok "zsh history options configured"
 fi
 
-if [[ -f "$DOTFILES_DIR/Brewfile" ]]; then
-  ok "Brewfile present"
+if [[ -f "$DOTFILES_DIR/Brewfile.linux" ]]; then
+  ok "Brewfile.linux present"
 else
-  fail "Brewfile missing from dotfiles repo"
+  fail "Brewfile.linux missing from dotfiles repo"
+fi
+
+if [[ -f "$HOME/.config/atuin/config.toml" ]] && rg -F --quiet "auto_sync = false" "$HOME/.config/atuin/config.toml"; then
+  ok "atuin local mode configured"
+else
+  warn "atuin local mode not confirmed"
+fi
+
+if [[ -f /proc/version ]] && rg -i --quiet "(microsoft|wsl)" /proc/version; then
+  if [[ -f /etc/wsl.conf ]] && rg -F --quiet "appendWindowsPath=false" /etc/wsl.conf; then
+    ok "WSL Windows PATH append disabled"
+  else
+    warn "WSL Windows PATH append is not disabled; run script/bootstrap-linux"
+  fi
 fi

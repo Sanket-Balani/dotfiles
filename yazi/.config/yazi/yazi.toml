@@ -7,7 +7,7 @@ edit = [{ run = 'nvim "$@"', block = true }]
 
 [open]
 prepend_rules = [
-  { name = "*.md", use = "edit" },
-  { name = "*.lua", use = "edit" },
-  { name = "*.zsh", use = "edit" },
+  { url = "*.md", use = "edit" },
+  { url = "*.lua", use = "edit" },
+  { url = "*.zsh", use = "edit" },
 ]

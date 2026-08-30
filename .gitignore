@@ -3,3 +3,6 @@
 *.swp
 *.swo
 *~
+
+# Local/private Git identity
+git/.config/git/local.gitconfig

@@ -1,0 +1,16 @@
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.bak
+*.tmp
+.env
+.env.*
+!.env.example
+.direnv/
+.venv/
+node_modules/
+dist/
+build/
+target/

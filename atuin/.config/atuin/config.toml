@@ -1,0 +1,9 @@
+sync_address = ""
+auto_sync = false
+update_check = false
+enter_accept = true
+filter_mode = "global"
+search_mode = "fuzzy"
+style = "compact"
+inline_height = 20
+show_help = false

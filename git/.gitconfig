@@ -1,0 +1,63 @@
+[init]
+	defaultBranch = main
+
+[core]
+	editor = nvim
+	pager = delta
+	excludesfile = ~/.config/git/ignore
+	autocrlf = false
+	eol = lf
+
+[pull]
+	rebase = false
+
+[push]
+	autoSetupRemote = true
+
+[fetch]
+	prune = true
+
+[merge]
+	conflictstyle = zdiff3
+
+[diff]
+	colorMoved = default
+
+[interactive]
+	diffFilter = delta --color-only
+
+[delta]
+	navigate = true
+	line-numbers = true
+	side-by-side = false
+	syntax-theme = Catppuccin Mocha
+	plus-style = syntax "#1e1e2e"
+	minus-style = syntax "#1e1e2e"
+	plus-emph-style = syntax "#313244"
+	minus-emph-style = syntax "#313244"
+	line-numbers-left-style = "#6c7086"
+	line-numbers-right-style = "#6c7086"
+	line-numbers-minus-style = "#f38ba8"
+	line-numbers-plus-style = "#a6e3a1"
+	file-style = bold "#89b4fa"
+	hunk-header-style = syntax bold "#cba6f7"
+
+[alias]
+	a = add
+	aa = add --all
+	br = branch
+	ci = commit
+	co = checkout
+	cob = checkout -b
+	d = diff
+	ds = diff --staged
+	l = log --graph --decorate --oneline --all
+	last = log -1 HEAD --stat
+	s = status --short --branch
+	st = status
+	sw = switch
+
+[credential]
+	helper = ~/.local/bin/git-credential-manager-wsl
+[include]
+    path = ~/.config/git/local.gitconfig

@@ -1,7 +1,15 @@
-if [ -x /opt/homebrew/bin/brew ]; then
+if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
+  eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+elif [ -x /opt/homebrew/bin/brew ]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# Corporate TLS inspection CA bundle for AWS CLI, boto3/botocore, and requests.
-export AWS_CA_BUNDLE="/opt/homebrew/etc/openssl@3/cert.pem"
-export REQUESTS_CA_BUNDLE="/opt/homebrew/etc/openssl@3/cert.pem"
+if [ -r /opt/homebrew/etc/openssl@3/cert.pem ]; then
+  export AWS_CA_BUNDLE="/opt/homebrew/etc/openssl@3/cert.pem"
+  export REQUESTS_CA_BUNDLE="/opt/homebrew/etc/openssl@3/cert.pem"
+elif [ -r /home/linuxbrew/.linuxbrew/etc/openssl@3/cert.pem ]; then
+  export AWS_CA_BUNDLE="/home/linuxbrew/.linuxbrew/etc/openssl@3/cert.pem"
+  export REQUESTS_CA_BUNDLE="/home/linuxbrew/.linuxbrew/etc/openssl@3/cert.pem"
+fi

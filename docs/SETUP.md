@@ -2,6 +2,21 @@
 
 ## Fresh machine
 
+### Ubuntu WSL
+
+```bash
+cd ~/dotfiles
+./script/bootstrap-linux --force
+```
+
+Restart WSL after the first run if `/etc/wsl.conf` changed:
+
+```powershell
+wsl.exe --shutdown
+```
+
+### macOS
+
 ```bash
 cd ~/dotfiles
 ./script/bootstrap --force
@@ -17,8 +32,8 @@ Options:
 
 ```bash
 cd ~/dotfiles
-brew bundle --file Brewfile
-stow --restow zsh starship ghostty tmux nvim yazi
+brew bundle --file Brewfile.linux
+stow --restow zsh starship git atuin tmux nvim yazi
 ./script/doctor
 ```
 

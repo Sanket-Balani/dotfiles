@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_ROOT="$HOME/dotfiles-backups"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
+
+if grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null; then
+  export PATH="$HOME/.local/bin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+fi
+
+FORCE=0
+SKIP_APT=0
+SKIP_PACKAGES=0
+SKIP_NVIM=0
+SKIP_CHSH=0
+SKIP_WSL_CONF=0
+
+usage() {
+  cat <<USAGE
+Usage: script/bootstrap-linux [--force] [--skip-apt] [--skip-packages] [--skip-nvim] [--skip-chsh] [--skip-wsl-conf]
+
+Options:
+  --force          Back up conflicting files automatically before stow.
+  --skip-apt       Skip apt prerequisites but still run Linuxbrew package setup.
+  --skip-packages  Skip apt/Linuxbrew package installation.
+  --skip-nvim      Skip Neovim headless plugin sync.
+  --skip-chsh      Do not set zsh as the default shell.
+  --skip-wsl-conf  Do not update /etc/wsl.conf.
+  -h, --help       Show this help.
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --skip-apt) SKIP_APT=1 ;;
+    --skip-packages) SKIP_PACKAGES=1 ;;
+    --skip-nvim) SKIP_NVIM=1 ;;
+    --skip-chsh) SKIP_CHSH=1 ;;
+    --skip-wsl-conf) SKIP_WSL_CONF=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$EUID" -ne 0 ]] &&
+   { [[ "$SKIP_PACKAGES" -eq 0 && "$SKIP_APT" -eq 0 ]] ||
+     [[ "$SKIP_CHSH" -eq 0 ]] ||
+     [[ "$SKIP_WSL_CONF" -eq 0 ]]; }; then
+    echo "Some steps require administrator privileges."
+    sudo -v
+fi
+
+is_wsl() {
+  grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
+}
+
+ensure_linuxbrew() {
+  if command -v brew >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "==> Installing Linuxbrew"
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+}
+
+install_uv() {
+  if command -v uv >/dev/null 2>&1 && command -v uvx >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "==> Installing uv"
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+}
+
+load_brew_shellenv() {
+  if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    export HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+    export HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
+    export HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+    export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH"
+    export MANPATH="/home/linuxbrew/.linuxbrew/share/man:${MANPATH:-}"
+    export INFOPATH="/home/linuxbrew/.linuxbrew/share/info:${INFOPATH:-}"
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
+    export HOMEBREW_PREFIX="$HOME/.linuxbrew"
+    export HOMEBREW_CELLAR="$HOME/.linuxbrew/Cellar"
+    export HOMEBREW_REPOSITORY="$HOME/.linuxbrew/Homebrew"
+    export PATH="$HOME/.linuxbrew/bin:$HOME/.linuxbrew/sbin:$PATH"
+    export MANPATH="$HOME/.linuxbrew/share/man:${MANPATH:-}"
+    export INFOPATH="$HOME/.linuxbrew/share/info:${INFOPATH:-}"
+  fi
+}
+
+# require_noninteractive_sudo() {
+#   if [[ "$EUID" -eq 0 ]]; then
+#     SUDO=()
+#     return
+#   fi
+
+#   if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+#     SUDO=(sudo -n)
+#     return
+#   fi
+
+#   cat <<EOF
+# sudo needs a password in this WSL session, so this script will not run detached
+# privileged commands that could hang.
+
+# Run the privileged setup once from Windows:
+
+#   wsl.exe -d Ubuntu -u root -- bash -lc "apt-get update && apt-get install -y build-essential ca-certificates curl file git locales procps python3 python3-pip python3-venv unzip zsh"
+
+# Then re-run:
+
+#   ./script/bootstrap-linux --force --skip-packages
+# EOF
+#   exit 1
+# }
+
+realpath_fallback() {
+  local p="$1"
+  if [[ -e "$p" || -L "$p" ]]; then
+    local d b
+    d="$(cd "$(dirname "$p")" && pwd -P)"
+    b="$(basename "$p")"
+    printf "%s/%s\n" "$d" "$b"
+  fi
+}
+
+backup_conflicts_and_stow() {
+  local packages=(zsh starship git atuin tmux nvim yazi)
+  local conflicts=()
+
+  for pkg in "${packages[@]}"; do
+    [[ "$pkg" == "nvim" && "$SKIP_NVIM" -eq 1 ]] && continue
+    local pkg_root="$DOTFILES_DIR/$pkg"
+    [[ -d "$pkg_root" ]] || continue
+
+    while IFS= read -r source; do
+      local rel target source_real target_real link_target
+      rel="${source#"$pkg_root"/}"
+      target="$HOME/$rel"
+      source_real="$(realpath_fallback "$source")"
+
+      if [[ -L "$target" ]]; then
+        link_target="$(readlink "$target" || true)"
+        case "$link_target" in
+          "$DOTFILES_DIR"/*|*"dotfiles"*) ;;
+          *) conflicts+=("$target") ;;
+        esac
+      elif [[ -e "$target" ]]; then
+        target_real="$(realpath_fallback "$target")"
+        if [[ "$source_real" == "$target_real" ]]; then
+          continue
+        fi
+        conflicts+=("$target")
+      fi
+    done < <(
+      find -P "$pkg_root" \
+        \( \
+          -path '*/.local/share' -o \
+          -path '*/.local/state' -o \
+          -path '*/.cache' \
+        \) -prune -o \
+        \( -type f -o -type l \) \
+        -print 2>/dev/null
+    )
+  done
+
+  if [[ "${#conflicts[@]}" -gt 0 && "$FORCE" -ne 1 ]]; then
+    echo "Conflict(s) detected. Re-run with --force to back them up automatically:"
+    printf '  %s\n' "${conflicts[@]}"
+    exit 1
+  fi
+
+  if [[ "${#conflicts[@]}" -gt 0 ]]; then
+    mkdir -p "$BACKUP_DIR"
+    echo "==> Backing up conflicts to $BACKUP_DIR"
+    for path in "${conflicts[@]}"; do
+      local rel dest
+      rel="${path#"$HOME"/}"
+      dest="$BACKUP_DIR/$rel"
+      mkdir -p "$(dirname "$dest")"
+      mv "$path" "$dest"
+    done
+  fi
+
+  echo "==> Stowing packages"
+  for pkg in "${packages[@]}"; do
+    [[ "$pkg" == "nvim" && "$SKIP_NVIM" -eq 1 ]] && continue
+    stow --restow --dir "$DOTFILES_DIR" --target "$HOME" "$pkg"
+  done
+}
+
+configure_wsl_conf() {
+  [[ "$SKIP_WSL_CONF" -eq 0 ]] || return 0
+  is_wsl || return 0
+
+  local desired tmp
+  desired="$(mktemp)"
+  tmp="$(mktemp)"
+  cat > "$desired" <<EOF
+[boot]
+systemd=true
+
+[user]
+default=$USER
+
+[interop]
+appendWindowsPath=false
+EOF
+
+  if [[ -f /etc/wsl.conf ]] && cmp -s "$desired" /etc/wsl.conf; then
+    rm -f "$desired" "$tmp"
+    return
+  fi
+
+  echo "==> Updating /etc/wsl.conf"
+  if [[ -f /etc/wsl.conf ]]; then
+    sudo cp /etc/wsl.conf "/etc/wsl.conf.dotfiles-backup-$TIMESTAMP"
+  fi
+  cp "$desired" "$tmp"
+  sudo install -m 0644 "$tmp" /etc/wsl.conf
+  rm -f "$desired" "$tmp"
+}
+
+set_default_shell() {
+  [[ "$SKIP_CHSH" -eq 0 ]] || return 0
+  local zsh_path current_shell
+  zsh_path="$(command -v zsh)"
+  current_shell="$(getent passwd "$USER" | cut -d: -f7)"
+
+  if ! grep -qxF "$zsh_path" /etc/shells; then
+    echo "==> Adding $zsh_path to /etc/shells"
+    printf '%s\n' "$zsh_path" | sudo tee -a /etc/shells >/dev/null
+  fi
+
+  if [[ "$current_shell" != "$zsh_path" ]]; then
+    echo "==> Setting default shell to $zsh_path"
+    sudo chsh -s "$zsh_path" "$USER"
+  fi
+}
+
+# if [[ "$SKIP_PACKAGES" -eq 0 && "$SKIP_APT" -eq 0 || "$SKIP_CHSH" -eq 0 || "$SKIP_WSL_CONF" -eq 0 ]]; then
+#   require_noninteractive_sudo
+# fi
+
+if [[ "$SKIP_PACKAGES" -eq 0 ]]; then
+  if [[ "$SKIP_APT" -eq 0 ]]; then
+    echo "==> Installing apt prerequisites"
+    sudo apt-get update
+    sudo apt-get install -y build-essential ca-certificates curl file git locales procps python3 python3-pip python3-venv unzip zsh
+    if command -v locale-gen >/dev/null 2>&1; then
+      sudo locale-gen en_US.UTF-8
+    fi
+  fi
+
+  ensure_linuxbrew
+  load_brew_shellenv
+
+  echo "==> Installing packages from Brewfile.linux"
+  brew bundle --file "$DOTFILES_DIR/Brewfile.linux"
+  install_uv
+else
+  load_brew_shellenv
+  install_uv
+fi
+
+if ! command -v stow >/dev/null 2>&1; then
+  echo "stow is required. Re-run without --skip-packages or install stow first."
+  exit 1
+fi
+
+backup_conflicts_and_stow
+
+echo "==> Installing zinit"
+ZINIT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
+if [[ ! -d "$ZINIT_HOME" ]]; then
+  mkdir -p "$(dirname "$ZINIT_HOME")"
+  git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+fi
+
+echo "==> Installing TPM"
+if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+  git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+fi
+
+echo "==> Running fzf shell integration installer"
+if command -v brew >/dev/null 2>&1; then
+  FZF_INSTALLER="$(brew --prefix)/opt/fzf/install"
+  if [[ -x "$FZF_INSTALLER" ]]; then
+    "$FZF_INSTALLER" --key-bindings --completion --no-update-rc --no-bash --no-fish
+  fi
+fi
+
+echo "==> Preparing Python host for Neovim"
+PYTHON_FOR_VENV="${PYTHON_FOR_VENV:-/usr/bin/python3}"
+if [[ -x "$PYTHON_FOR_VENV" ]]; then
+  NVIM_PY_DIR="$HOME/.local/share/nvim/python3"
+  if [[ -f "$NVIM_PY_DIR/pyvenv.cfg" ]] && ! grep -F --quiet "home = /usr/bin" "$NVIM_PY_DIR/pyvenv.cfg"; then
+    rm -rf "$NVIM_PY_DIR"
+  fi
+  if [[ ! -x "$NVIM_PY_DIR/bin/python3" ]]; then
+    "$PYTHON_FOR_VENV" -m venv "$NVIM_PY_DIR"
+  fi
+  "$NVIM_PY_DIR/bin/python3" -m pip install --upgrade pip pynvim
+else
+  echo "$PYTHON_FOR_VENV not found; skipping pynvim host setup"
+fi
+
+configure_wsl_conf
+set_default_shell
+
+if [[ "$SKIP_NVIM" -eq 0 ]] && command -v nvim >/dev/null 2>&1; then
+  echo "==> Warming up Neovim plugins (headless)"
+  nvim --headless "+Lazy! sync" +qa || true
+fi
+
+echo "==> Bootstrap complete"
+echo "Restart WSL once for /etc/wsl.conf changes: wsl.exe --shutdown"
+echo "Open a new terminal or run: exec zsh"
+echo "Then in tmux run: prefix + I"

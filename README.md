@@ -1,6 +1,6 @@
 # dotfiles
 
-Modern macOS keyboard-first environment:
+Modern keyboard-first dotfiles for macOS and Ubuntu WSL:
 
 - AeroSpace (i3-style tiling workspaces on macOS)
 - Ghostty + Catppuccin Mocha
@@ -9,11 +9,28 @@ Modern macOS keyboard-first environment:
 - tmux + TPM + resurrect/continuum
 - yazi + modern CLI tools
 
+On Windows, Ubuntu WSL is the primary environment. Windows Terminal, zsh, Git/delta,
+Atuin, tmux, and CLI surfaces are themed to match the existing Catppuccin Mocha
+Neovim/tmux/starship setup.
+
 ## Bootstrap
 
 ```bash
 cd ~/dotfiles
 ./script/bootstrap --force
+```
+
+For Ubuntu WSL:
+
+```bash
+cd ~/dotfiles
+./script/bootstrap-linux --force
+```
+
+For Windows Terminal/font setup, run from PowerShell:
+
+```powershell
+.\script\bootstrap-windows.ps1
 ```
 
 ## Validate
@@ -25,7 +42,7 @@ cd ~/dotfiles
 ## Restow after edits
 
 ```bash
-stow --restow zsh starship ghostty aerospace tmux nvim yazi
+stow --restow zsh starship git atuin tmux nvim yazi
 ```
 
 ## AeroSpace workspace map
