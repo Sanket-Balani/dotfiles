@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_ROOT="$HOME/dotfiles-backups"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
+
+USE_CASK=1
+SKIP_NVIM=0
+FORCE=0
+
+usage() {
+  cat <<USAGE
+Usage: script/bootstrap [--no-cask] [--skip-nvim] [--force]
+
+Options:
+  --no-cask     Skip Homebrew casks
+  --skip-nvim   Skip Neovim headless warmup
+  --force       Backup conflicting files automatically
+  -h, --help    Show this help
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-cask) USE_CASK=0 ;;
+    --skip-nvim) SKIP_NVIM=1 ;;
+    --force) FORCE=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if ! command -v brew >/dev/null 2>&1; then
+  echo "Homebrew is required: https://brew.sh"
+  exit 1
+fi
+
+echo "==> Installing packages from Brewfile"
+if [[ "$USE_CASK" -eq 1 ]]; then
+  brew bundle --file "$DOTFILES_DIR/Brewfile"
+else
+  TMP_BREWFILE="$(mktemp)"
+  grep -E '^(#|$|tap |brew )' "$DOTFILES_DIR/Brewfile" > "$TMP_BREWFILE"
+  brew bundle --file "$TMP_BREWFILE"
+  rm -f "$TMP_BREWFILE"
+fi
+
+if ! command -v stow >/dev/null 2>&1; then
+  echo "stow missing after brew bundle; installing stow"
+  brew install stow
+fi
+
+PACKAGES=(zsh starship ghostty aerospace tmux nvim yazi)
+CONFLICTS=()
+
+realpath_fallback() {
+  local p="$1"
+  if [[ -e "$p" || -L "$p" ]]; then
+    local d b
+    d="$(cd "$(dirname "$p")" && pwd -P)"
+    b="$(basename "$p")"
+    printf "%s/%s\n" "$d" "$b"
+  fi
+}
+
+for pkg in "${PACKAGES[@]}"; do
+  [[ "$pkg" == "nvim" && "$SKIP_NVIM" -eq 1 ]] && continue
+  pkg_root="$DOTFILES_DIR/$pkg"
+
+  while IFS= read -r source; do
+    rel="${source#"$pkg_root"/}"
+    target="$HOME/$rel"
+    source_real="$(realpath_fallback "$source")"
+
+    if [[ -L "$target" ]]; then
+      link_target="$(readlink "$target" || true)"
+      case "$link_target" in
+        *dotfiles/*) ;;
+        *) CONFLICTS+=("$target") ;;
+      esac
+    elif [[ -e "$target" ]]; then
+      target_real="$(realpath_fallback "$target")"
+      if [[ "$source_real" == "$target_real" ]]; then
+        continue
+      fi
+      CONFLICTS+=("$target")
+    fi
+  done < <(find "$pkg_root" \( -type f -o -type l \) -print)
+done
+
+if [[ "${#CONFLICTS[@]}" -gt 0 && "$FORCE" -ne 1 ]]; then
+  echo "Conflict(s) detected. Re-run with --force to back them up automatically:"
+  printf '  %s\n' "${CONFLICTS[@]}"
+  exit 1
+fi
+
+if [[ "${#CONFLICTS[@]}" -gt 0 && "$FORCE" -eq 1 ]]; then
+  mkdir -p "$BACKUP_DIR"
+  echo "==> Backing up conflicts to $BACKUP_DIR"
+  for path in "${CONFLICTS[@]}"; do
+    rel="${path#"$HOME"/}"
+    dest="$BACKUP_DIR/$rel"
+    mkdir -p "$(dirname "$dest")"
+    mv "$path" "$dest"
+  done
+fi
+
+echo "==> Stowing packages"
+for pkg in "${PACKAGES[@]}"; do
+  [[ "$pkg" == "nvim" && "$SKIP_NVIM" -eq 1 ]] && continue
+  stow --restow --dir "$DOTFILES_DIR" --target "$HOME" "$pkg"
+done
+
+echo "==> Installing zinit"
+ZINIT_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
+if [[ ! -d "$ZINIT_HOME" ]]; then
+  mkdir -p "$(dirname "$ZINIT_HOME")"
+  git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+fi
+
+echo "==> Installing TPM"
+if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+  git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+fi
+
+echo "==> Running fzf shell integration installer"
+FZF_INSTALLER="$(brew --prefix)/opt/fzf/install"
+if [[ -x "$FZF_INSTALLER" ]]; then
+  "$FZF_INSTALLER" --key-bindings --completion --no-update-rc --no-bash --no-fish
+fi
+
+echo "==> Preparing atuin local config"
+mkdir -p "$HOME/.config/atuin"
+if [[ ! -f "$HOME/.config/atuin/config.toml" ]]; then
+  cat > "$HOME/.config/atuin/config.toml" <<ATUIN
+sync_address = ""
+auto_sync = false
+update_check = false
+enter_accept = true
+filter_mode = "global"
+search_mode = "fuzzy"
+style = "compact"
+inline_height = 20
+ATUIN
+fi
+
+echo "==> Preparing Python host for Neovim"
+if command -v python3 >/dev/null 2>&1; then
+  NVIM_PY_DIR="$HOME/.local/share/nvim/python3"
+  if [[ ! -x "$NVIM_PY_DIR/bin/python3" ]]; then
+    python3 -m venv "$NVIM_PY_DIR"
+  fi
+  "$NVIM_PY_DIR/bin/python3" -m pip install --upgrade pip pynvim >/dev/null
+else
+  echo "python3 not found; skipping pynvim host setup"
+fi
+
+if [[ "$SKIP_NVIM" -eq 0 ]] && command -v nvim >/dev/null 2>&1; then
+  echo "==> Warming up Neovim plugins (headless)"
+  nvim --headless "+Lazy! sync" +qa || true
+fi
+
+echo "==> Bootstrap complete"
+echo "Open a new terminal or run: exec zsh"
+echo "Then in tmux run: prefix + I"

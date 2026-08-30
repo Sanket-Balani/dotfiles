@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+ok() { printf "[ok] %s\n" "$1"; }
+warn() { printf "[warn] %s\n" "$1"; }
+fail() { printf "[fail] %s\n" "$1"; }
+
+TOOLS=(brew stow zsh zoxide starship fzf fd rg bat eza yazi jq gh lazygit tmux nvim aerospace)
+
+for t in "${TOOLS[@]}"; do
+  if command -v "$t" >/dev/null 2>&1; then
+    ok "command present: $t"
+  else
+    warn "command missing: $t"
+  fi
+done
+
+check_link() {
+  local path="$1"
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    fail "missing: $path"
+    return
+  fi
+
+  if [[ -L "$path" ]]; then
+    ok "symlink: $path -> $(readlink "$path")"
+    return
+  fi
+
+  local resolved_dir
+  resolved_dir="$(cd "$(dirname "$path")" && pwd -P)"
+  local resolved_path="${resolved_dir}/$(basename "$path")"
+
+  case "$resolved_path" in
+    "$DOTFILES_DIR"/*) ok "linked via parent dir: $path -> $resolved_path" ;;
+    *) warn "exists but not linked to dotfiles: $path" ;;
+  esac
+}
+
+if ! command -v rg >/dev/null 2>&1; then
+  fail "ripgrep (rg) is required for some doctor checks"
+  exit 1
+fi
+
+check_link "$HOME/.zshrc"
+check_link "$HOME/.zprofile"
+check_link "$HOME/.zshenv"
+check_link "$HOME/.config/starship.toml"
+check_link "$HOME/.config/ghostty/config"
+check_link "$HOME/.tmux.conf"
+check_link "$HOME/.config/tmux/tmux.conf"
+check_link "$HOME/.config/nvim/init.lua"
+check_link "$HOME/.config/yazi/yazi.toml"
+check_link "$HOME/.aerospace.toml"
+
+if [[ -d "$HOME/.tmux/plugins/tpm" ]]; then
+  ok "tpm installed"
+else
+  warn "tpm missing: ~/.tmux/plugins/tpm"
+fi
+
+history_opts=(
+  "setopt APPEND_HISTORY"
+  "setopt SHARE_HISTORY"
+  "setopt HIST_IGNORE_SPACE"
+  "setopt HIST_IGNORE_ALL_DUPS"
+  "setopt HIST_IGNORE_DUPS"
+  "setopt HIST_SAVE_NO_DUPS"
+  "setopt HIST_FIND_NO_DUPS"
+  "setopt INC_APPEND_HISTORY"
+  "setopt EXTENDED_HISTORY"
+)
+
+missing_hist=0
+for opt in "${history_opts[@]}"; do
+  if ! rg -F --quiet "$opt" "$HOME/.zshrc"; then
+    warn "missing in .zshrc: $opt"
+    missing_hist=1
+  fi
+done
+
+if [[ "$missing_hist" -eq 0 ]]; then
+  ok "zsh history options configured"
+fi
+
+if [[ -f "$DOTFILES_DIR/Brewfile" ]]; then
+  ok "Brewfile present"
+else
+  fail "Brewfile missing from dotfiles repo"
+fi

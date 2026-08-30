@@ -1,0 +1,9 @@
+[[manager.prepend_keymap]]
+on = ["g", "h"]
+run = "cd ~"
+desc = "Go home"
+
+[[manager.prepend_keymap]]
+on = ["g", "d"]
+run = "cd ~/dotfiles"
+desc = "Go to dotfiles"

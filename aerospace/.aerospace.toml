@@ -1,0 +1,119 @@
+# AeroSpace configuration for Linux-style tiling workspaces on macOS.
+# Managed via dotfiles + stow.
+config-version = 2
+start-at-login = true
+
+# Keep layouts predictable when splitting/moving windows repeatedly.
+enable-normalization-flatten-containers = true
+enable-normalization-opposite-orientation-for-nested-containers = true
+default-root-container-layout = "tiles"
+default-root-container-orientation = "auto"
+
+# Keep workspace switching reliable even when a workspace is empty.
+persistent-workspaces = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+# Prevent "hidden app" state from feeling like random minimization.
+automatically-unhide-macos-hidden-apps = true
+
+# Keep pointer/focus behavior consistent when switching monitor/workspace focus.
+on-focused-monitor-changed = ["move-mouse monitor-lazy-center"]
+
+[gaps]
+inner.horizontal = 8
+inner.vertical = 8
+outer.left = 8
+outer.bottom = 8
+outer.top = 8
+outer.right = 8
+
+[mode.main.binding]
+# Workspace focus
+alt-1 = "workspace 1"
+alt-2 = "workspace 2"
+alt-3 = "workspace 3"
+alt-4 = "workspace 4"
+alt-5 = "workspace 5"
+alt-6 = "workspace 6"
+alt-7 = "workspace 7"
+alt-8 = "workspace 8"
+alt-9 = "workspace 9"
+
+# Move focused window to workspace
+alt-shift-1 = "move-node-to-workspace 1"
+alt-shift-2 = "move-node-to-workspace 2"
+alt-shift-3 = "move-node-to-workspace 3"
+alt-shift-4 = "move-node-to-workspace 4"
+alt-shift-5 = "move-node-to-workspace 5"
+alt-shift-6 = "move-node-to-workspace 6"
+alt-shift-7 = "move-node-to-workspace 7"
+alt-shift-8 = "move-node-to-workspace 8"
+alt-shift-9 = "move-node-to-workspace 9"
+
+# Directional focus and movement
+alt-h = "focus left"
+alt-j = "focus down"
+alt-k = "focus up"
+alt-l = "focus right"
+alt-shift-h = "move left"
+alt-shift-j = "move down"
+alt-shift-k = "move up"
+alt-shift-l = "move right"
+
+# Layout and state controls
+alt-f = "fullscreen"
+alt-shift-f = "layout floating tiling"
+alt-slash = "layout tiles horizontal vertical"
+alt-enter = "balance-sizes"
+
+# Service mode for safe reload/reset commands.
+alt-shift-semicolon = "mode service"
+
+# Window switcher in the current workspace (all windows, not app-level).
+alt-tab = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-next"
+alt-shift-tab = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-prev"
+alt-period = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-next"
+alt-comma = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-prev"
+
+# Try to override macOS app switcher with workspace-local window cycling.
+cmd-tab = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-next"
+cmd-shift-tab = "focus --boundaries workspace --boundaries-action wrap-around-the-workspace dfs-prev"
+
+[mode.service.binding]
+esc = "mode main"
+r = ["reload-config", "mode main"]
+f = ["flatten-workspace-tree", "mode main"]
+backspace = ["close-all-windows-but-current", "mode main"]
+
+# undo BEGIN ghostty-native-tab-workaround — delete this block through matching END to revert (no Ghostty on-window-detected).
+# undo note: macOS native tabs look like extra windows to AeroSpace (phantom splits / half width).
+# undo note: start Ghostty floating so tabs are not tiled separately; alt-shift-f puts it in the tree when you want.
+# undo note: after editing, reload AeroSpace (service mode r), quit Ghostty fully, reopen.
+# undo note: optional — append "move-node-to-workspace 3" to run below (after layout floating) for workspace 3.
+# undo ref: https://ghostty.org/docs/help/macos-tiling-wms
+[[on-window-detected]]
+if.app-id = "com.mitchellh.ghostty"
+run = ["layout floating"]
+# undo END ghostty-native-tab-workaround
+
+# Auto workspace assignment rules (disabled).
+# Uncomment any block you want to re-enable.
+#
+# [[on-window-detected]]
+# if.app-id = "app.zen-browser.zen"
+# run = ["layout tiling", "move-node-to-workspace 1"]
+#
+# [[on-window-detected]]
+# if.app-id = "com.todesktop.230313mzl4w4u92"
+# run = ["layout tiling", "move-node-to-workspace 2"]
+#
+# [[on-window-detected]]
+# if.app-id = "com.microsoft.VSCode"
+# run = ["layout tiling", "move-node-to-workspace 2"]
+#
+# undo [[on-window-detected]]
+# undo if.app-id = "com.mitchellh.ghostty"
+# undo run = ["layout tiling", "move-node-to-workspace 3"]
+#
+# [[on-window-detected]]
+# if.app-id = "com.openai.codex"
+# run = ["layout tiling", "move-node-to-workspace 4"]
