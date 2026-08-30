@@ -134,6 +134,16 @@ Remove-JsonProperty -Object $ubuntuProfile -Name "startingDirectory"
 $settings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
 Write-Host "==> Windows Terminal now defaults to PowerShell 7"
 Write-Host "==> PowerShell 7 and Ubuntu profiles now use Catppuccin Mocha and JetBrainsMono Nerd Font"
+$vsCodeSettingsPath = Join-Path $env:APPDATA "Code\User\settings.json"
+if (Test-Path $vsCodeSettingsPath) {
+  Copy-Item -LiteralPath $vsCodeSettingsPath -Destination "$vsCodeSettingsPath.dotfiles-backup-$timestamp"
+  $vsCodeSettings = Get-Content -LiteralPath $vsCodeSettingsPath -Raw | ConvertFrom-Json
+  Set-JsonProperty -Object $vsCodeSettings -Name "terminal.integrated.fontFamily" -Value "JetBrainsMono NFM, JetBrainsMono NF, 'JetBrains Mono', Consolas, monospace"
+  $vsCodeSettings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $vsCodeSettingsPath -Encoding UTF8
+  Write-Host "==> VS Code integrated terminal now uses JetBrainsMono Nerd Font"
+} else {
+  Write-Host "==> VS Code settings not found; skipping integrated terminal font setup"
+}
 
 $profilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
 $profileDir = Split-Path -Parent $profilePath
@@ -213,3 +223,4 @@ if ($profileText -match $pattern) {
 
 Set-Content -LiteralPath $profilePath -Value $profileText -Encoding UTF8
 Write-Host "==> PowerShell profile aliases updated at $profilePath"
+
