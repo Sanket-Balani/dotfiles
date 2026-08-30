@@ -57,7 +57,5 @@
 	st = status
 	sw = switch
 
-[credential]
-	helper = ~/.local/bin/git-credential-manager-wsl
 [include]
     path = ~/.config/git/local.gitconfig
